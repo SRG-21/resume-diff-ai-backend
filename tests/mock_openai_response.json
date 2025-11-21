@@ -1,0 +1,14 @@
+{
+  "choices": [
+    {
+      "text": "{\n  \"matchPercent\": 80,\n  \"matchedSkills\": [\"Python\", \"PostgreSQL\", \"Docker\", \"Redis\"],\n  \"missingSkills\": [\"FastAPI\", \"AWS\"],\n  \"highlights\": {\n    \"jdMatches\": [{\"term\": \"Python\", \"context\": \"We need a Backend Engineer experienced with Python\"}],\n    \"resumeMatches\": [{\"term\": \"Python\", \"context\": \"Worked on Python, Django, PostgreSQL\"}]\n  }\n}",
+      "index": 0,
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "id": "cmpl-test123",
+  "object": "text_completion",
+  "created": 1700000000,
+  "model": "gpt-3.5-turbo-instruct"
+}
