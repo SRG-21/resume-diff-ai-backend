@@ -1,0 +1,22 @@
+# SAM CLI Configuration
+# Run `sam deploy` to deploy using these settings
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "resume-diff-ai-backend"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = false
+parameter_overrides = "Stage=prod"
+
+[default.build.parameters]
+use_container = false
+parallel = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.sync.parameters]
+watch = true
