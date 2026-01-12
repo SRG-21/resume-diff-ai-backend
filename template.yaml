@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Resume Diff AI Backend - FastAPI on AWS Lambda
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment stage
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 1024
+    Runtime: python3.11
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        TEMP_DIR: /tmp/uploads
+        LOG_LEVEL: INFO
+        ALLOWED_ORIGINS: "*"
+        USE_SECRETS_MANAGER: "true"
+        SECRET_NAME: resume-diff-ai/secrets
+
+Resources:
+  # Lambda Function
+  ResumeDiffAIFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub resume-diff-ai-${Stage}
+      Handler: handler.handler
+      CodeUri: .
+      Description: Resume Diff AI API - Compare resumes with job descriptions
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            # Secrets Manager access
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:resume-diff-ai/*
+      Events:
+        # Catch-all route for FastAPI
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: GET
+        ApiHealth:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /health
+            Method: GET
+        ApiCompare:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/compare
+            Method: POST
+        ApiDocs:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /docs
+            Method: GET
+        ApiOpenAPI:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /openapi.json
+            Method: GET
+        # Catch-all for any other routes
+        ApiCatchAll:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  # HTTP API (cheaper than REST API)
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        MaxAge: 300
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiUrl
+  
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt ResumeDiffAIFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-FunctionArn
+  
+  FunctionName:
+    Description: Lambda Function Name
+    Value: !Ref ResumeDiffAIFunction
