@@ -58,9 +58,9 @@ def build_comparison_prompt(jd_text: str, resume_text: str) -> str:
     Returns:
         Formatted prompt string
     """
-    # Ensure texts are not too long for the model
-    max_jd_length = 15000
-    max_resume_length = 15000
+    # Reduce text lengths to speed up OpenAI response (avoid API Gateway 29s timeout)
+    max_jd_length = 6000
+    max_resume_length = 6000
     
     jd_truncated = False
     resume_truncated = False
@@ -234,9 +234,13 @@ async def call_openai_completions(
     
     prompt = build_comparison_prompt(jd_text, resume_text)
     
+    # Use Chat Completions API for chat models like gpt-4o-mini
     request_payload = {
         "model": settings.OPENAI_MODEL,
-        "prompt": prompt,
+        "messages": [
+            {"role": "system", "content": "You are a strict JSON generator. Output only valid JSON with no additional text or markdown."},
+            {"role": "user", "content": prompt}
+        ],
         "temperature": 0,
         "max_tokens": settings.OPENAI_MAX_TOKENS,
     }
@@ -246,12 +250,12 @@ async def call_openai_completions(
         "Content-Type": "application/json",
     }
     
-    logger.info(f"Calling OpenAI completions API with model: {settings.OPENAI_MODEL}")
+    logger.info(f"Calling OpenAI Chat Completions API with model: {settings.OPENAI_MODEL}")
     
     try:
         async with httpx.AsyncClient(timeout=settings.OPENAI_TIMEOUT) as client:
             response = await client.post(
-                "https://api.openai.com/v1/completions",
+                "https://api.openai.com/v1/chat/completions",
                 json=request_payload,
                 headers=headers
             )
@@ -270,13 +274,15 @@ async def call_openai_completions(
         logger.error(f"OpenAI API call failed: {e}")
         raise Exception(f"Failed to call OpenAI API: {str(e)}")
     
-    # Extract the completion text
+    # Extract the completion text from chat format
     try:
         choices = response_data.get('choices', [])
         if not choices:
             raise ValueError("No choices in OpenAI response")
         
-        completion_text = choices[0].get('text', '').strip()
+        # Chat completions use message.content, not text
+        message = choices[0].get('message', {})
+        completion_text = message.get('content', '').strip()
         
         if not completion_text:
             raise ValueError("Empty completion text from OpenAI")
