@@ -1,0 +1,48 @@
+# SAM Build artifacts
+.aws-sam/
+samconfig.toml.backup
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment files (don't commit secrets!)
+.env
+.env.local
+.env.*.local
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temp files
+temp_uploads/
+*.tmp
