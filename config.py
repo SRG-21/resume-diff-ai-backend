@@ -5,6 +5,7 @@ Supports AWS Secrets Manager for Lambda deployment
 import os
 import json
 import logging
+import secrets
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 
@@ -29,9 +30,9 @@ def get_secrets_from_aws() -> dict:
         response = client.get_secret_value(SecretId=secret_name)
         
         if "SecretString" in response:
-            secrets = json.loads(response["SecretString"])
+            secrets_data = json.loads(response["SecretString"])
             logger.info(f"Successfully loaded secrets from AWS Secrets Manager")
-            return secrets
+            return secrets_data
         
     except Exception as e:
         logger.warning(f"Failed to fetch secrets from AWS Secrets Manager: {e}")
@@ -63,6 +64,16 @@ class Settings(BaseSettings):
     # Server Configuration
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+    
+    # JWT Authentication Configuration
+    JWT_SECRET_KEY: str = _aws_secrets.get("JWT_SECRET_KEY", secrets.token_urlsafe(32))
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # MongoDB Atlas Configuration
+    MONGODB_URI: str = _aws_secrets.get("MONGODB_URI", "")
+    MONGODB_DATABASE: str = _aws_secrets.get("MONGODB_DATABASE", "resume_diff_ai")
     
     @property
     def allowed_origins_list(self) -> List[str]:

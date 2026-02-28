@@ -4,10 +4,11 @@ Compares resumes against job descriptions using OpenAI completions API
 """
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -15,6 +16,9 @@ from config import settings
 from models import CompareResponseModel, HealthResponse
 from file_utils import extract_text_from_file
 from openai_client import call_openai_completions
+from auth import get_current_user
+from auth_routes import router as auth_router
+from database import connect_to_mongodb, close_mongodb_connection
 
 # Configure logging
 logging.basicConfig(
@@ -23,11 +27,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager - handles startup and shutdown"""
+    # Startup: Connect to MongoDB
+    logger.info("Starting up Resume Diff AI API...")
+    await connect_to_mongodb()
+    
+    yield
+    
+    # Shutdown: Close MongoDB connection
+    logger.info("Shutting down Resume Diff AI API...")
+    await close_mongodb_connection()
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Resume Diff AI API",
     description="API for resume analysis and comparison using OpenAI",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Configure CORS
@@ -38,6 +58,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include auth routes
+app.include_router(auth_router)
 
 
 @app.middleware("http")
@@ -82,22 +105,25 @@ async def compare(
     jd_file: Optional[UploadFile] = File(None),
     jd_text: Optional[str] = Form(None),
     resume_file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
 ):
     """
-    Compare resume against job description
+    Compare resume against job description (requires authentication)
     
     Args:
         jd_file: Optional PDF file containing job description
         jd_text: Optional text string containing job description
         resume_file: Required file (PDF/DOCX/DOC/TXT) containing resume
+        current_user: Authenticated user (injected by dependency)
     
     Returns:
         CompareResponseModel with match percentage, skills, and highlights
     
     Raises:
-        HTTPException: 400 for validation errors, 500 for server errors, 502 for invalid model response
+        HTTPException: 400 for validation errors, 401 for auth errors, 500 for server errors, 502 for invalid model response
     """
     request_id = str(uuid.uuid4())
+    logger.info(f"[{request_id}] Starting comparison request for user: {current_user['email']}")
     logger.info(f"[{request_id}] Starting comparison request")
     
     warnings = []
