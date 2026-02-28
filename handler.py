@@ -6,9 +6,9 @@ from mangum import Mangum
 from main import app
 
 # Create handlers for both API Gateway and Function URL
-# API Gateway uses /prod stage prefix, Function URL doesn't
-handler_api_gateway = Mangum(app, lifespan="off", api_gateway_base_path="/prod")
-handler_function_url = Mangum(app, lifespan="off")
+# lifespan="auto" ensures FastAPI lifespan events (MongoDB connection) are called
+handler_api_gateway = Mangum(app, lifespan="auto", api_gateway_base_path="/prod")
+handler_function_url = Mangum(app, lifespan="auto")
 
 def handler(event, context):
     """
