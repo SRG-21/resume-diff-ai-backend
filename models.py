@@ -17,6 +17,16 @@ class Highlights(BaseModel):
     resumeMatches: Optional[List[HighlightItem]] = Field(None, description="Matches found in Resume")
 
 
+class Breakdown(BaseModel):
+    """Per-category match scores (0-100)"""
+    hardSkills: int = Field(0, ge=0, le=100)
+    softSkills: int = Field(0, ge=0, le=100)
+    experience: int = Field(0, ge=0, le=100)
+    education: int = Field(0, ge=0, le=100)
+    titleMatch: int = Field(0, ge=0, le=100)
+    keywords: int = Field(0, ge=0, le=100)
+
+
 class CompareResponseModel(BaseModel):
     """Response model matching frontend contract exactly"""
     matchPercent: int = Field(..., ge=0, le=100, description="Match percentage (0-100)")
@@ -24,6 +34,13 @@ class CompareResponseModel(BaseModel):
     missingSkills: List[str] = Field(..., description="Array of missing skills")
     highlights: Optional[Highlights] = Field(None, description="Optional highlights")
     warnings: Optional[List[str]] = Field(None, description="Warnings or notices")
+    id: Optional[str] = Field(None, description="Saved comparison id")
+    jobTitle: Optional[str] = Field(None, description="Job title detected in the JD")
+    company: Optional[str] = Field(None, description="Company detected in the JD")
+    breakdown: Optional[Breakdown] = Field(None, description="Category scores (paid plans)")
+    ats: Optional[dict] = Field(None, description="ATS formatting check")
+    locked: List[str] = Field(default_factory=list, description="Features hidden by the user's plan")
+    usage: Optional[dict] = Field(None, description="Scans used / allowed this month")
     
     @field_validator('matchPercent')
     @classmethod

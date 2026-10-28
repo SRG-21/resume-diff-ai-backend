@@ -1,14 +1,16 @@
 {
+  "id": "chatcmpl-test123",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "gpt-4o-mini",
   "choices": [
     {
-      "text": "{\n  \"matchPercent\": 80,\n  \"matchedSkills\": [\"Python\", \"PostgreSQL\", \"Docker\", \"Redis\"],\n  \"missingSkills\": [\"FastAPI\", \"AWS\"],\n  \"highlights\": {\n    \"jdMatches\": [{\"term\": \"Python\", \"context\": \"We need a Backend Engineer experienced with Python\"}],\n    \"resumeMatches\": [{\"term\": \"Python\", \"context\": \"Worked on Python, Django, PostgreSQL\"}]\n  }\n}",
       "index": 0,
-      "logprobs": null,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"matchPercent\": 80,\n  \"matchedSkills\": [\"Python\", \"PostgreSQL\", \"Docker\", \"Redis\"],\n  \"missingSkills\": [\"FastAPI\", \"AWS\"],\n  \"jobTitle\": \"Backend Engineer\",\n  \"company\": \"Acme\",\n  \"breakdown\": {\"hardSkills\": 75, \"softSkills\": 60, \"experience\": 80, \"education\": 70, \"titleMatch\": 90, \"keywords\": 66},\n  \"highlights\": {\n    \"jdMatches\": [{\"term\": \"Python\", \"context\": \"We need a Backend Engineer experienced with Python\"}],\n    \"resumeMatches\": [{\"term\": \"Python\", \"context\": \"Worked on Python, Django, PostgreSQL\"}]\n  }\n}"
+      },
       "finish_reason": "stop"
     }
-  ],
-  "id": "cmpl-test123",
-  "object": "text_completion",
-  "created": 1700000000,
-  "model": "gpt-3.5-turbo-instruct"
+  ]
 }

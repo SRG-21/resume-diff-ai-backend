@@ -23,6 +23,7 @@ Globals:
         TEMP_DIR: /tmp/uploads
         LOG_LEVEL: INFO
         ALLOWED_ORIGINS: "*"
+        ENVIRONMENT: production
         USE_SECRETS_MANAGER: "true"
         SECRET_NAME: resume-diff-ai/secrets
 
@@ -44,6 +45,11 @@ Resources:
                 - secretsmanager:GetSecretValue
               Resource:
                 - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:resume-diff-ai/*
+            # Transactional email (set EMAIL_BACKEND=ses in the function environment to use it)
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource: "*"
       Events:
         # Catch-all route for FastAPI
         ApiRoot:
@@ -95,6 +101,8 @@ Resources:
         AllowMethods:
           - GET
           - POST
+          - PATCH
+          - DELETE
           - OPTIONS
         AllowHeaders:
           - Content-Type

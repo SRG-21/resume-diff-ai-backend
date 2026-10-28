@@ -3,7 +3,7 @@ Authentication API Routes
 Handles signup, login, logout, refresh token, and user info endpoints
 """
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from auth import (
@@ -18,7 +18,22 @@ from auth import (
     refresh_access_token,
     blacklist_token,
     get_current_user,
+    get_user_by_email,
+    user_to_response,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    VerifyEmailRequest,
+    GoogleLoginRequest,
+    create_verification_token,
+    create_reset_token,
+    verify_email_token,
+    reset_password_with_token,
+    verify_google_credential,
+    login_or_create_google_user,
+    delete_user_account,
 )
+from email_service import send_verification_email, send_password_reset_email
+from usage import client_ip, enforce_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +43,7 @@ security = HTTPBearer()
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def signup(user_data: UserCreate):
+async def signup(user_data: UserCreate, request: Request):
     """
     Register a new user
     
@@ -42,10 +57,12 @@ async def signup(user_data: UserCreate):
         400: Email already registered or validation error
     """
     logger.info(f"Signup attempt for email: {user_data.email}")
+    await enforce_rate_limit(f"signup:{client_ip(request)}", 10, 3600, "Too many signups from this network. Try again later.")
     
     try:
         # Create user
         user = await create_user(user_data)
+        await send_verification_email(user["email"], create_verification_token(user))
         
         # Generate tokens
         token_response = create_tokens_for_user(user)
@@ -70,7 +87,7 @@ async def signup(user_data: UserCreate):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, request: Request):
     """
     Login with email and password
     
@@ -84,6 +101,9 @@ async def login(credentials: UserLogin):
         401: Invalid credentials
     """
     logger.info(f"Login attempt for email: {credentials.email}")
+    ip = client_ip(request)
+    await enforce_rate_limit(f"login-ip:{ip}", 30, 900, "Too many login attempts. Please wait a few minutes.")
+    await enforce_rate_limit(f"login-email:{credentials.email}", 10, 900, "Too many login attempts. Please wait a few minutes.")
     
     try:
         # Authenticate user
@@ -175,12 +195,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     Raises:
         401: Not authenticated
     """
-    return UserResponse(
-        id=current_user["id"],
-        email=current_user["email"],
-        name=current_user["name"],
-        created_at=current_user["created_at"]
-    )
+    return user_to_response(current_user)
 
 
 @router.get("/validate")
@@ -194,12 +209,67 @@ async def validate_token(current_user: dict = Depends(get_current_user)):
     Raises:
         401: Invalid token
     """
-    return {
-        "valid": True,
-        "user": UserResponse(
-            id=current_user["id"],
-            email=current_user["email"],
-            name=current_user["name"],
-            created_at=current_user["created_at"]
-        )
-    }
+    return {"valid": True, "user": user_to_response(current_user)}
+
+
+@router.post("/verify-email", response_model=UserResponse)
+async def verify_email(body: VerifyEmailRequest):
+    """Confirm an email address using the token from the verification email"""
+    user = await verify_email_token(body.token)
+    return user_to_response(user)
+
+
+@router.post("/resend-verification")
+async def resend_verification(request: Request, current_user: dict = Depends(get_current_user)):
+    """Send another verification email to the signed-in user"""
+    if current_user.get("email_verified"):
+        return {"message": "Email already verified"}
+    await enforce_rate_limit(f"resend:{current_user['id']}", 3, 3600, "Verification email already sent. Please check your inbox.")
+    await send_verification_email(current_user["email"], create_verification_token(current_user))
+    return {"message": "Verification email sent"}
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, request: Request):
+    """
+    Email a password reset link.
+
+    Always returns the same response so the endpoint cannot be used to find out
+    which email addresses have accounts.
+    """
+    await enforce_rate_limit(f"forgot-ip:{client_ip(request)}", 10, 3600, "Too many requests. Try again later.")
+    await enforce_rate_limit(f"forgot-email:{body.email}", 3, 3600, "Too many requests. Try again later.")
+    user = await get_user_by_email(body.email)
+    if user and user.get("hashed_password"):
+        await send_password_reset_email(user["email"], create_reset_token(user))
+    return {"message": "If an account exists for that email, a reset link has been sent."}
+
+
+@router.post("/reset-password", response_model=TokenResponse)
+async def reset_password(body: ResetPasswordRequest):
+    """Set a new password using a reset link token, then sign the user in"""
+    user = await reset_password_with_token(body.token, body.password)
+    return create_tokens_for_user(user)
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(body: GoogleLoginRequest, request: Request):
+    """Sign in or sign up with a Google Identity Services ID token"""
+    await enforce_rate_limit(f"google:{client_ip(request)}", 30, 900, "Too many attempts. Please wait a few minutes.")
+    claims = await verify_google_credential(body.credential)
+    user = await login_or_create_google_user(claims)
+    return create_tokens_for_user(user)
+
+
+@router.delete("/account", status_code=status.HTTP_200_OK)
+async def delete_account(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    current_user: dict = Depends(get_current_user),
+):
+    """Permanently delete the account and all stored data, and cancel any subscription"""
+    from billing import cancel_subscriptions_for_user  # local import avoids a circular import
+
+    await cancel_subscriptions_for_user(current_user)
+    await delete_user_account(current_user)
+    await blacklist_token(credentials.credentials)
+    return {"message": "Account deleted"}

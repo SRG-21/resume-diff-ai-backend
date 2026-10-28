@@ -85,6 +85,25 @@ async def _create_indexes() -> None:
         expireAfterSeconds=60 * 60 * 24 * 8  # Auto-delete after 8 days
     )
     
+    # Monthly usage counters: one document per user per month
+    await _database.usage.create_index([("user_id", 1), ("month", 1)], unique=True)
+
+    # Short-lived counters for rate limiting (auto-expire)
+    await _database.rate_limits.create_index("expires_at", expireAfterSeconds=0)
+    await _database.rate_limits.create_index("key", unique=True)
+
+    # Saved comparisons; expire after the retention window
+    await _database.comparisons.create_index([("user_id", 1), ("created_at", -1)])
+    await _database.comparisons.create_index("expires_at", expireAfterSeconds=0)
+
+    # Saved resume versions and tracked applications
+    await _database.resumes.create_index([("user_id", 1), ("created_at", -1)])
+    await _database.applications.create_index([("user_id", 1), ("updated_at", -1)])
+
+    # Processed Stripe webhook events (idempotency)
+    await _database.stripe_events.create_index("event_id", unique=True)
+    await _database.stripe_events.create_index("created_at", expireAfterSeconds=60 * 60 * 24 * 30)
+
     logger.info("Database indexes created/verified")
 
 
@@ -106,3 +125,33 @@ def get_users_collection() -> AsyncIOMotorCollection:
 def get_blacklisted_tokens_collection() -> AsyncIOMotorCollection:
     """Get the blacklisted tokens collection"""
     return get_database().blacklisted_tokens
+
+
+def get_usage_collection() -> AsyncIOMotorCollection:
+    """Get the monthly usage counters collection"""
+    return get_database().usage
+
+
+def get_rate_limits_collection() -> AsyncIOMotorCollection:
+    """Get the rate limit counters collection"""
+    return get_database().rate_limits
+
+
+def get_comparisons_collection() -> AsyncIOMotorCollection:
+    """Get the saved comparisons collection"""
+    return get_database().comparisons
+
+
+def get_resumes_collection() -> AsyncIOMotorCollection:
+    """Get the saved resumes collection"""
+    return get_database().resumes
+
+
+def get_applications_collection() -> AsyncIOMotorCollection:
+    """Get the job applications (tracker) collection"""
+    return get_database().applications
+
+
+def get_stripe_events_collection() -> AsyncIOMotorCollection:
+    """Get the processed Stripe events collection"""
+    return get_database().stripe_events

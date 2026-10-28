@@ -23,6 +23,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies and run tests
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest -q
+
       - name: Setup AWS SAM CLI
         uses: aws-actions/setup-sam@v2
         with:
