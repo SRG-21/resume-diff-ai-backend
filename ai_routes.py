@@ -115,6 +115,7 @@ class AcceptedRewrite(BaseModel):
 
 class ExportRequest(BaseModel):
     comparison_id: str
+    format: str = Field("docx", pattern="^(docx|pdf)$")
     accepted: List[AcceptedRewrite] = Field(default_factory=list, max_length=20)
 
 
@@ -167,17 +168,77 @@ def build_docx(text: str) -> bytes:
     return buffer.getvalue()
 
 
+# Standard PDF fonts only cover Latin-1, so map common typography and drop the rest
+_PDF_CHAR_MAP = {
+    "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
+    "\u2026": "...", "\u00a0": " ", "\u2022": "-", "\u25cf": "-", "\u25aa": "-", "\u25e6": "-",
+}
+
+
+def _pdf_safe(text: str) -> str:
+    text = "".join(_PDF_CHAR_MAP.get(c, c) for c in text)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def build_pdf(text: str) -> bytes:
+    """Render the resume as a text-based, single-column PDF (selectable text, no images)"""
+    from xml.sax.saxutils import escape
+
+    from reportlab.lib.pagesizes import LETTER
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
+
+    body = ParagraphStyle("body", fontName="Helvetica", fontSize=10.5, leading=14)
+    heading = ParagraphStyle("heading", parent=body, fontName="Helvetica-Bold", fontSize=12, leading=16, spaceBefore=10, spaceAfter=3)
+    title = ParagraphStyle("title", parent=body, fontName="Helvetica-Bold", fontSize=16, leading=20, spaceAfter=4)
+
+    story, bullets = [], []
+
+    def flush():
+        nonlocal bullets
+        if bullets:
+            story.append(ListFlowable([ListItem(Paragraph(b, body), leftIndent=14) for b in bullets], bulletType="bullet", start="-", leftIndent=14))
+            bullets = []
+
+    first = True
+    for line in text.split("\n"):
+        stripped = _pdf_safe(line.strip())
+        if not stripped:
+            continue
+        safe = escape(stripped)
+        if BULLET_PREFIX_RE.match(line):
+            bullets.append(escape(BULLET_PREFIX_RE.sub("", _pdf_safe(line)).strip()))
+            first = False
+            continue
+        flush()
+        if first:
+            story.append(Paragraph(safe, title))
+        elif HEADING_RE.match(stripped) or (stripped.isupper() and len(stripped) < 40):
+            story.append(Paragraph(safe.title() if stripped.isupper() else safe, heading))
+        else:
+            story.append(Paragraph(safe, body))
+            story.append(Spacer(1, 2))
+        first = False
+    flush()
+
+    buffer = io.BytesIO()
+    SimpleDocTemplate(buffer, pagesize=LETTER, leftMargin=0.8 * inch, rightMargin=0.8 * inch, topMargin=0.7 * inch, bottomMargin=0.7 * inch, title="Resume").build(story or [Paragraph("Empty resume", body)])
+    return buffer.getvalue()
+
+
 @router.post("/api/export/tailored")
 async def export_tailored(body: ExportRequest, user: dict = Depends(require_feature("export"))):
     doc = await load_comparison(user, body.comparison_id, with_text=True)
     tailored = apply_rewrites(doc["resume_text"], body.accepted)
-    content = build_docx(tailored)
-    filename = re.sub(r"[^A-Za-z0-9_-]+", "_", f"resume_{doc.get('company') or doc.get('job_title') or 'tailored'}")[:60] + ".docx"
-    return Response(
-        content=content,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "_", f"resume_{doc.get('company') or doc.get('job_title') or 'tailored'}")[:60]
+    if body.format == "pdf":
+        content, media_type, filename = build_pdf(tailored), "application/pdf", f"{stem}.pdf"
+    else:
+        content = build_docx(tailored)
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = f"{stem}.docx"
+    return Response(content=content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 # ============ Bulk ranking (Coach plan) ============

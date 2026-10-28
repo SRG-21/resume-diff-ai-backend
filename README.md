@@ -58,7 +58,7 @@ The API will be available at:
 | Saved resumes | `GET/POST /api/resumes`, `DELETE /api/resumes/{id}` | free: 1, paid: 10+ |
 | Job import | `POST /api/import-job` | paid |
 | AI tools | `POST /api/ai/rewrites`, `/api/ai/cover-letter`, `/api/ai/interview-prep`, `GET /api/ai/{id}` | paid |
-| Export | `POST /api/export/tailored` (DOCX) | paid |
+| Export | `POST /api/export/tailored` (`format`: `docx` or `pdf`) | paid |
 | Tracker | `GET/POST /api/applications`, `PATCH/DELETE /api/applications/{id}` | paid |
 | Bulk ranking | `POST /api/bulk/rank` | coach |
 | Billing | `GET /api/billing/status`, `POST /api/billing/checkout`, `/portal`, `/webhook` | user / Stripe |

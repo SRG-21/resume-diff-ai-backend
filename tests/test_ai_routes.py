@@ -164,3 +164,33 @@ async def test_tracker_crud_and_gating(client, make_user, mock_ai):
     assert (await client.patch(f"/api/applications/{app_id}", headers=other, json={"status": "offer"})).status_code == 404
     assert (await client.request("DELETE", f"/api/applications/{app_id}", headers=headers)).status_code == 200
     assert (await client.get("/api/applications", headers=headers)).json()["items"] == []
+
+
+async def test_export_tailored_pdf_is_text_based_and_applies_rewrites(client, make_user, mock_ai):
+    import pypdf
+
+    headers, _ = await make_user("pro")
+    cid = await new_comparison(client, headers)
+    r = await client.post("/api/export/tailored", headers=headers, json={
+        "comparison_id": cid, "format": "pdf",
+        "accepted": [{"original": "Worked on Python apps", "suggested": "Built Python \u201cservices\u201d \u2014 1M req/day \u4e2d"}],
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf" and r.headers["content-disposition"].endswith('.pdf"')
+    text = "\n".join(p.extract_text() for p in pypdf.PdfReader(io.BytesIO(r.content)).pages)
+    assert 'Built Python "services" - 1M req/day' in text  # smart quotes/dash mapped, CJK replaced rather than crashing
+    assert "Worked on Python apps" not in text
+    assert "jane@example.com" in text
+
+
+async def test_export_rejects_unknown_format(client, make_user, mock_ai):
+    headers, _ = await make_user("pro")
+    cid = await new_comparison(client, headers)
+    r = await client.post("/api/export/tailored", headers=headers, json={"comparison_id": cid, "format": "rtf"})
+    assert r.status_code == 422
+
+
+def test_build_pdf_handles_escaping_and_empty_input():
+    from ai_routes import build_pdf
+    assert build_pdf("A & B <script>\n- item <b>x</b>").startswith(b"%PDF")
+    assert build_pdf("").startswith(b"%PDF")
